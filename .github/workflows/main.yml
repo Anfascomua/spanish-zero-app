@@ -6,10 +6,119 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
+  patch-web:
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message, '[web-controls]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch listening controls into index.html
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('spanish-zero-github-netlify/web/index.html')
+          s = path.read_text(encoding='utf-8')
+
+          s = s.replace(
+              'const BASE_WORDS=buildExtendedDictionary(CORE_WORDS);',
+              'const BASE_WORDS=CORE_WORDS.map(x=>({...x}));'
+          )
+
+          marker = '/* DIRECT_LISTENING_CONTROLS_V1 */'
+          if marker not in s:
+              js = r'''
+/* DIRECT_LISTENING_CONTROLS_V1 */
+let loopListening={running:false,runId:0,deck:[]};
+const LOOP_FEMALE=/female|woman|mujer|helena|elvira|lucia|lucía|paulina|monica|mónica|sofia|sofía|maria|maría|irina|svetlana|victoria/i;
+const LOOP_MALE=/male|man|hombre|alvaro|álvaro|pablo|diego|jorge|antonio|pavel|yuri|alexander|maxim|dmitry|nikolai|mikhail/i;
+function loopVoice(lang,gender){
+ const code=lang.slice(0,2).toLowerCase(),voices=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith(code)),re=gender==='female'?LOOP_FEMALE:LOOP_MALE;
+ return voices.find(v=>re.test(v.name||''))||(voices.length>1?voices[gender==='female'?0:1]:voices[0]||null)
+}
+function loopUtterance(text,lang,gender,rate){let u=new SpeechSynthesisUtterance(text);u.lang=lang;u.rate=rate;let v=loopVoice(lang,gender);if(v)u.voice=v;return u}
+function loopGap(gender){let u=loopUtterance('pausa pausa pausa','es-ES',gender,.5);u.volume=0;return u}
+function updateLoopButtons(){
+ const labels=[document.getElementById('listen-selected-btn'),document.getElementById('listen-category-btn'),document.getElementById('loop-card-btn')];
+ labels.forEach(b=>{if(!b)return;const normal=b.dataset.label||b.textContent;if(!b.dataset.label)b.dataset.label=normal;const text=loopListening.running?'■ Остановить прослушку':b.dataset.label;if(b.textContent!==text)b.textContent=text});
+}
+function stopLoopListening(){loopListening.running=false;loopListening.runId++;loopListening.deck=[];if('speechSynthesis'in window)speechSynthesis.cancel();updateLoopButtons()}
+function loopSyncCard(word,index){
+ try{drillDeck=loopListening.deck.slice();drillPos=index;page='drill';lastAutoSpoken=word.id+':'+index;render();setTimeout(updateLoopButtons,0)}catch{}
+}
+function loopDeck(mode){
+ const entries=dictionaryEntries();
+ if(mode==='selected'){let ids=getP().dictSelected||[];return entries.filter(x=>ids.includes(x.id))}
+ if(mode==='category'){let c=dictCategory||'all';return c==='all'?entries:entries.filter(x=>x.category===c)}
+ if(mode==='card'){return Array.isArray(drillDeck)?drillDeck.slice():[]}
+ return []
+}
+function queueLoopListening(id){
+ const deck=loopListening.deck;if(!deck.length)return;
+ for(let turn=0;turn<1200&&loopListening.running&&id===loopListening.runId;turn++){
+   const index=turn%deck.length,word=deck[index],femaleFirst=turn%2===0,esGender=femaleFirst?'female':'male',ruGender=femaleFirst?'male':'female';
+   const es=loopUtterance(word.es,'es-ES',esGender,.70),ru=loopUtterance(word.ru,'ru-RU',ruGender,.79),gap=loopGap(esGender);
+   es.onstart=()=>{if(loopListening.running&&id===loopListening.runId)loopSyncCard(word,index)};
+   speechSynthesis.speak(es);speechSynthesis.speak(ru);speechSynthesis.speak(gap);
+ }
+}
+window.startLoopListening=mode=>{
+ if(loopListening.running){stopLoopListening();return}
+ if(!('speechSynthesis'in window)){alert('Этот браузер не поддерживает озвучку.');return}
+ const deck=loopDeck(mode);if(!deck.length){alert(mode==='selected'?'Сначала отметьте слова галками «Учить».':'В выбранном наборе нет слов.');return}
+ speechSynthesis.cancel();loopListening.deck=deck;loopListening.running=true;const id=++loopListening.runId;loopSyncCard(deck[0],0);setTimeout(()=>queueLoopListening(id),100);updateLoopButtons()
+};
+window.startSelectedListening=()=>startLoopListening('selected');
+window.startCategoryListening=()=>startLoopListening('category');
+window.stopSelectedLoopListening=stopLoopListening;
+'''
+              anchor = 'function dictionary(){'
+              if anchor not in s:
+                  raise SystemExit('dictionary() anchor not found')
+              s = s.replace(anchor, js + '\n' + anchor, 1)
+
+          old_actions = '<div class="dict-actions"><button onclick="selectVisible()">✓ Выбрать показанные</button><button onclick="clearSelection()">Снять выбор</button></div>'
+          new_actions = '<div class="dict-actions"><button onclick="selectVisible()">✓ Выбрать показанные</button><button onclick="clearSelection()">Снять выбор</button><button id="listen-selected-btn" class="accent" data-label="▶ Прослушать выбранное" onclick="startLoopListening(\'selected\')">▶ Прослушать выбранное</button><button id="listen-category-btn" data-label="🔁 Прослушать категорию" onclick="startLoopListening(\'category\')">🔁 Прослушать категорию</button></div>'
+          if old_actions in s:
+              s = s.replace(old_actions, new_actions, 1)
+
+          old_nav = '<div class="drill-nav"><button onclick="drillMove(-1)">← Предыдущее</button><button onclick="drillMove(1)">Следующее →</button></div>'
+          new_nav = old_nav + '<button id="loop-card-btn" class="primary" data-label="▶ Прослушать выбранное" onclick="startLoopListening(\'card\')">▶ Прослушать выбранное</button>'
+          if old_nav in s and 'id="loop-card-btn"' not in s:
+              s = s.replace(old_nav, new_nav, 1)
+
+          required = ['id="listen-selected-btn"','id="listen-category-btn"','id="loop-card-btn"','DIRECT_LISTENING_CONTROLS_V1']
+          missing=[x for x in required if x not in s]
+          if missing:
+              raise SystemExit('patch incomplete: '+', '.join(missing))
+
+          path.write_text(s, encoding='utf-8')
+          print('index.html patched with direct listening controls')
+          PY
+
+      - name: Commit web controls
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No web patch needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add spanish-zero-github-netlify/web/index.html
+          git commit -m "fix: direct listening buttons in app [web-controls]"
+          git push origin HEAD:main
+
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
