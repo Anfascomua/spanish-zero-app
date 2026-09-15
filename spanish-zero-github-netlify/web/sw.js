@@ -1,4 +1,4 @@
-const CACHE = 'spanish-zero-web-v2-loop-listening';
+const CACHE = 'spanish-zero-web-v3-loop-listening-refresh';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 const LOOP_SCRIPT = String.raw`(() => {
@@ -14,7 +14,7 @@ const LOOP_SCRIPT = String.raw`(() => {
   function refresh(){const b=document.getElementById('selected-loop-btn'),s=document.getElementById('selected-loop-status'),n=count();if(b){b.disabled=!n&&!running;b.style.opacity=(n||running)?'1':'.45';b.textContent=running?'■ Остановить прослушку':('🔁 Прослушка по кругу ('+n+')')}if(s)s.textContent=running?('Идёт по кругу: '+deck.length+' слов. Голоса меняются на каждом следующем слове.'):'1-е слово: женщина по-испански → мужчина по-русски. 2-е: мужчина по-испански → женщина по-русски. Затем по кругу.'}
   function ensure(){const a=document.querySelector('.dict-actions');if(!a)return;if(!document.getElementById('selected-loop-btn')){const b=document.createElement('button');b.id='selected-loop-btn';b.className='accent';b.onclick=toggle;a.appendChild(b);const s=document.createElement('div');s.id='selected-loop-status';s.className='muted tiny';s.style.margin='-4px 2px 12px';a.insertAdjacentElement('afterend',s)}refresh()}
   function stop(){running=false;runId++;deck=[];if('speechSynthesis'in window)speechSynthesis.cancel();refresh()}
-  async function play(id){while(running&&id===runId&&deck.length){const w=deck[step%deck.length],femaleFirst=step%2===0;await sayPart(w.es,'es-ES',femaleFirst?'female':'male',.78);if(!running||id!==runId)break;if(!await pause(260,id))break;await sayPart(w.ru,'ru-RU',femaleFirst?'male':'female',.88);if(!running||id!==runId)break;step++;if(!await pause(600,id))break}}
+  async function play(id){while(running&&id===runId&&deck.length){const w=deck[step%deck.length],femaleFirst=step%2===0;await sayPart(w.es,'es-ES',femaleFirst?'female':'male',.78);if(!running||id!==runId)break;if(!await pause(260,id))break;await sayPart(w.ru,'ru-RU',femaleFirst?'male':'female',.88);if(!running||id!==runId)break;step++;refresh();if(!await pause(600,id))break}}
   function toggle(){if(running){stop();return}const p=progress(),selected=Array.isArray(p.dictSelected)?p.dictSelected:[];deck=entries().filter(x=>selected.includes(x.id));if(!deck.length){alert('Сначала выберите слова флажком «Учить».');return}if(!('speechSynthesis'in window)){alert('Этот браузер не поддерживает системную озвучку.');return}speechSynthesis.cancel();running=true;step=0;const id=++runId;refresh();play(id)}
   function start(){const app=document.getElementById('app');if(!app)return;new MutationObserver(ensure).observe(app,{childList:true,subtree:true});ensure()}
   window.stopSelectedLoopListening=stop;
@@ -28,7 +28,7 @@ function injectLoopListening(html) {
 
 async function appResponse(request) {
   try {
-    const res = await fetch(request);
+    const res = await fetch(request, { cache: 'no-store' });
     const type = res.headers.get('content-type') || '';
     if (!type.includes('text/html')) return res;
     const html = injectLoopListening(await res.text());
@@ -54,10 +54,19 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await self.clients.claim();
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      try {
+        const url = new URL(client.url);
+        url.searchParams.set('app_update', '3');
+        await client.navigate(url.toString());
+      } catch {}
+    }
+  })());
 });
 
 self.addEventListener('message', event => {
