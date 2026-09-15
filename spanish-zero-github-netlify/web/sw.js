@@ -1,4 +1,4 @@
-const CACHE='spanish-zero-web-v15-explicit-listen-buttons';
+const CACHE='spanish-zero-web-v16-card-selected-button';
 const SHELL=['/','/index.html','/manifest.webmanifest','/icon-192.png','/icon-512.png'];
 const LOOP_SCRIPT=String.raw`(()=>{
 let running=false,runId=0,deck=[],source='';const N=1200;
@@ -14,7 +14,7 @@ function categoryWords(){let a=all(),c=cat();return c==='all'?a:a.filter(x=>x.ca
 function refresh(){let sb=document.getElementById('listen-selected-btn'),cb=document.getElementById('listen-category-btn'),db=document.getElementById('loop-card-btn'),s=document.getElementById('selected-loop-status'),n=selectedIds().length,c=cat(),k=categoryWords().length;
  if(sb){sb.disabled=!n&&!running;sb.style.opacity=(n||running)?'1':'.45';sb.textContent=running?'■ Остановить':('▶ Прослушать выбранное ('+n+')')}
  if(cb){cb.disabled=false;cb.style.opacity='1';cb.textContent=running?'■ Остановить':(c==='all'?('🔁 Прослушать весь словарь ('+k+')'):('🔁 Прослушать категорию ('+k+')'))}
- if(db){db.disabled=false;db.style.opacity='1';db.textContent=running?'■ Остановить прослушку':'🔁 Прослушать текущий набор по кругу'}
+ if(db){db.disabled=false;db.style.opacity='1';db.textContent=running?'■ Остановить':'▶ Прослушать выбранное'}
  if(s)s.textContent=running?'Идёт по кругу: '+deck.length+' слов · '+source+'. Пауза 3 секунды. Голоса чередуются.':n?'Выбрано галками: '+n+' слов. Можно слушать их отдельно или запустить всю категорию.':c==='all'?'Галок нет. Можно слушать весь словарь.':'Галок нет. Можно слушать категорию «'+c+'».'}
 function ensure(){let a=document.querySelector('.dict-actions');if(a){let sb=document.getElementById('listen-selected-btn');if(!sb){sb=document.createElement('button');sb.id='listen-selected-btn';sb.className='accent';a.appendChild(sb)}sb.onclick=()=>toggle('selected');let cb=document.getElementById('listen-category-btn');if(!cb){cb=document.createElement('button');cb.id='listen-category-btn';a.appendChild(cb)}cb.onclick=()=>toggle('category');let s=document.getElementById('selected-loop-status');if(!s){s=document.createElement('div');s.id='selected-loop-status';s.className='muted tiny';s.style.margin='-4px 2px 12px';a.insertAdjacentElement('afterend',s)}}
  let db=document.getElementById('loop-card-btn'),isDrill=false;try{isDrill=typeof page!=='undefined'&&page==='drill'}catch{}if(isDrill){let main=document.querySelector('main');if(main&&!db){db=document.createElement('button');db.id='loop-card-btn';db.className='primary';db.style.marginTop='12px';db.onclick=()=>toggle('card');let nav=main.querySelector('.drill-nav');if(nav)nav.insertAdjacentElement('afterend',db);else main.appendChild(db)}}else if(db)db.remove();refresh()}
