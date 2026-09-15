@@ -1,4 +1,4 @@
-const CACHE = 'spanish-zero-web-v5-real-dictionary';
+const CACHE = 'spanish-zero-web-v6-mobile-spanish-visible';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 const LOOP_SCRIPT = String.raw`(() => {
@@ -21,10 +21,31 @@ const LOOP_SCRIPT = String.raw`(() => {
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();`;
 
+const MOBILE_DICTIONARY_STYLE = String.raw`<style id="mobile-dictionary-fix">
+@media(max-width:520px){
+  .dict-table-wrap{overflow-x:hidden!important}
+  .dict-table{min-width:0!important;width:100%!important;table-layout:fixed!important;font-size:.82rem!important}
+  .dict-table th,.dict-table td{padding:8px 5px!important;white-space:normal!important;overflow-wrap:anywhere!important;word-break:break-word!important}
+  .dict-table th:nth-child(1),.dict-table td:nth-child(1){width:42px!important}
+  .dict-table th:nth-child(2),.dict-table td:nth-child(2){width:28%!important;display:table-cell!important}
+  .dict-table th:nth-child(3),.dict-table td:nth-child(3){width:29%!important;display:table-cell!important}
+  .dict-table th:nth-child(4),.dict-table td:nth-child(4){width:auto!important;display:table-cell!important}
+  .dict-table th:nth-child(5),.dict-table td:nth-child(5),
+  .dict-table th:nth-child(6),.dict-table td:nth-child(6),
+  .dict-table th:nth-child(7),.dict-table td:nth-child(7){display:none!important}
+  .dict-es{display:block!important;font-size:1.05rem!important;font-weight:900!important;line-height:1.2!important;color:#231f20!important}
+  :root[data-theme="dark"] .dict-es{color:#fff!important}
+  .dict-tr{display:block!important;font-size:.78rem!important;line-height:1.25!important}
+  .dict-ru{display:block!important;font-size:.82rem!important;line-height:1.25!important}
+  .dict-no{display:none!important}
+}
+</style>`;
+
 function prepareHtml(html) {
   const generated = 'const BASE_WORDS=buildExtendedDictionary(CORE_WORDS);';
   const realOnly = 'const BASE_WORDS=CORE_WORDS.map(x=>({...x}));';
   if (html.includes(generated)) html = html.replace(generated, realOnly);
+  if (!html.includes('mobile-dictionary-fix')) html = html.replace('</head>', `${MOBILE_DICTIONARY_STYLE}</head>`);
   if (!html.includes('selected-loop-btn')) html = html.replace('</body>', `<script>${LOOP_SCRIPT}<\/script></body>`);
   return html;
 }
