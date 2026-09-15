@@ -1,4 +1,4 @@
-const CACHE = 'spanish-zero-web-v4-loop-listening-fix';
+const CACHE = 'spanish-zero-web-v5-real-dictionary';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png'];
 
 const LOOP_SCRIPT = String.raw`(() => {
@@ -21,9 +21,12 @@ const LOOP_SCRIPT = String.raw`(() => {
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();`;
 
-function injectLoopListening(html) {
-  if (html.includes('selected-loop-btn')) return html;
-  return html.replace('</body>', `<script>${LOOP_SCRIPT}<\/script></body>`);
+function prepareHtml(html) {
+  const generated = 'const BASE_WORDS=buildExtendedDictionary(CORE_WORDS);';
+  const realOnly = 'const BASE_WORDS=CORE_WORDS.map(x=>({...x}));';
+  if (html.includes(generated)) html = html.replace(generated, realOnly);
+  if (!html.includes('selected-loop-btn')) html = html.replace('</body>', `<script>${LOOP_SCRIPT}<\/script></body>`);
+  return html;
 }
 
 async function appResponse(request) {
@@ -31,7 +34,7 @@ async function appResponse(request) {
     const res = await fetch(request, { cache: 'no-store' });
     const type = res.headers.get('content-type') || '';
     if (!type.includes('text/html')) return res;
-    const html = injectLoopListening(await res.text());
+    const html = prepareHtml(await res.text());
     const headers = new Headers(res.headers);
     headers.delete('content-length');
     const modified = new Response(html, { status: res.status, statusText: res.statusText, headers });
@@ -41,7 +44,7 @@ async function appResponse(request) {
   } catch {
     const cached = await caches.match('/index.html');
     if (!cached) throw new Error('offline');
-    const html = injectLoopListening(await cached.text());
+    const html = prepareHtml(await cached.text());
     const headers = new Headers(cached.headers);
     headers.delete('content-length');
     return new Response(html, { status: cached.status, statusText: cached.statusText, headers });
