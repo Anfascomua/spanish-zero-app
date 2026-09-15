@@ -15,55 +15,20 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Add listening controls and logic directly to index
+      - name: Patch listening logic into index
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import base64
           p = Path('spanish-zero-github-netlify/web/index.html')
           s = p.read_text(encoding='utf-8')
-
-          old = '<div class="dict-actions"><button onclick="selectVisible()">✓ Выбрать показанные</button><button onclick="clearSelection()">Снять выбор</button></div>'
-          new = '<div class="dict-actions"><button onclick="selectVisible()">✓ Выбрать показанные</button><button onclick="clearSelection()">Снять выбор</button><button id="listen-selected-btn" class="accent" onclick="startSelectedListening()">▶ Прослушать выбранное</button><button id="listen-category-btn" onclick="startCategoryListening()">🔁 Прослушать категорию</button></div>'
-          if old in s:
-              s = s.replace(old, new, 1)
-
-          old2 = '<div class="drill-nav"><button onclick="drillMove(-1)">← Предыдущее</button><button onclick="drillMove(1)">Следующее →</button></div>'
-          new2 = old2 + '<button id="loop-card-btn" class="primary" onclick="startLoopListening(true)">▶ Прослушать выбранное</button>'
-          if old2 in s and 'id="loop-card-btn"' not in s:
-              s = s.replace(old2, new2, 1)
-
-          s = s.replace('const BASE_WORDS=buildExtendedDictionary(CORE_WORDS);','const BASE_WORDS=CORE_WORDS.map(x=>({...x}));')
-
           marker = '/* DIRECT_LISTENING_V1 */'
           if marker not in s:
               anchor = "window.startSelectedDrill=()=>{"
-              code = r'''
-/* DIRECT_LISTENING_V1 */
-let loopListeningRunning=false,loopListeningRunId=0,loopListeningDeck=[],loopListeningSource='';
-const LOOP_LISTEN_PREQUEUE=1200;
-const LOOP_FEMALE=/female|woman|mujer|helena|elvira|lucia|lucía|paulina|monica|mónica|sofia|sofía|maria|maría|irina|svetlana|victoria/i;
-const LOOP_MALE=/male|man|hombre|alvaro|álvaro|pablo|diego|jorge|antonio|pavel|yuri|alexander|maxim|dmitry|nikolai|mikhail/i;
-function loopVoice(lang,gender){let code=lang.slice(0,2).toLowerCase(),a=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith(code)),re=gender==='female'?LOOP_FEMALE:LOOP_MALE;return a.find(v=>re.test(v.name||''))||(a.length>1?a[gender==='female'?0:1]:a[0]||null)}
-function loopUtterance(text,lang,gender,rate){let u=new SpeechSynthesisUtterance(text);u.lang=lang;u.rate=rate;let v=loopVoice(lang,gender);if(v)u.voice=v;return u}
-function loopGap(gender){let u=loopUtterance('pausa pausa pausa','es-ES',gender,.5);u.volume=0;return u}
-function loopRefreshButtons(){let p=getP(),n=Array.isArray(p.dictSelected)?p.dictSelected.length:0,c=dictCategory||'all',allWords=dictionaryEntries(),catWords=c==='all'?allWords:allWords.filter(x=>x.category===c),sb=document.getElementById('listen-selected-btn'),cb=document.getElementById('listen-category-btn'),db=document.getElementById('loop-card-btn');if(sb){sb.disabled=!n&&!loopListeningRunning;sb.style.opacity=(n||loopListeningRunning)?'1':'.45';sb.textContent=loopListeningRunning?'■ Остановить':`▶ Прослушать выбранное (${n})`}if(cb){cb.disabled=false;cb.textContent=loopListeningRunning?'■ Остановить':c==='all'?`🔁 Прослушать весь словарь (${catWords.length})`:`🔁 Прослушать категорию (${catWords.length})`}if(db){db.disabled=false;db.textContent=loopListeningRunning?'■ Остановить':'▶ Прослушать выбранное'}}
-function stopLoopListening(){loopListeningRunning=false;loopListeningRunId++;loopListeningDeck=[];loopListeningSource='';if('speechSynthesis'in window)speechSynthesis.cancel();loopRefreshButtons()}
-function loopSyncCard(w,index){if(page!=='drill')page='drill';drillDeck=loopListeningDeck.slice();drillPos=index;lastAutoSpoken=w.id+':'+index;render();loopRefreshButtons()}
-function loopQueue(id){for(let turn=0;turn<LOOP_LISTEN_PREQUEUE&&loopListeningRunning&&id===loopListeningRunId;turn++){let index=turn%loopListeningDeck.length,w=loopListeningDeck[index],femaleFirst=turn%2===0,esGender=femaleFirst?'female':'male',ruGender=femaleFirst?'male':'female',es=loopUtterance(w.es,'es-ES',esGender,.70),ru=loopUtterance(w.ru,'ru-RU',ruGender,.79),gap=loopGap(esGender);es.onstart=()=>{if(loopListeningRunning&&id===loopListeningRunId)loopSyncCard(w,index)};speechSynthesis.speak(es);speechSynthesis.speak(ru);speechSynthesis.speak(gap)}}
-function startLoopMode(mode){if(loopListeningRunning){stopLoopListening();return}let allWords=dictionaryEntries();if(mode==='selected'){let p=getP(),ids=Array.isArray(p.dictSelected)?p.dictSelected:[];loopListeningDeck=allWords.filter(x=>ids.includes(x.id));loopListeningSource='selected'}else if(mode==='category'){let c=dictCategory||'all';loopListeningDeck=c==='all'?allWords:allWords.filter(x=>x.category===c);loopListeningSource='category'}else{loopListeningDeck=Array.isArray(drillDeck)?drillDeck.slice():[];loopListeningSource='card'}if(!loopListeningDeck.length){alert(mode==='selected'?'Сначала отметьте слова галками в словаре.':'В выбранном наборе нет слов.');return}if(!('speechSynthesis'in window)){alert('Озвучка не поддерживается.');return}speechSynthesis.cancel();loopListeningRunning=true;let id=++loopListeningRunId;loopSyncCard(loopListeningDeck[0],0);setTimeout(()=>loopQueue(id),80);loopRefreshButtons()}
-window.startSelectedListening=()=>startLoopMode('selected');
-window.startCategoryListening=()=>startLoopMode('category');
-window.startLoopListening=()=>startLoopMode('card');
-window.stopSelectedLoopListening=stopLoopListening;
-'''
+              code = base64.b64decode('LyogRElSRUNUX0xJU1RFTklOR19WMSAqLwpsZXQgbG9vcExpc3RlbmluZ1J1bm5pbmc9ZmFsc2UsbG9vcExpc3RlbmluZ1J1bklkPTAsbG9vcExpc3RlbmluZ0RlY2s9W10sbG9vcExpc3RlbmluZ1NvdXJjZT0nJzsKY29uc3QgTE9PUF9MSVNURU5fUFJFUVVFVUU9MTIwMDsKY29uc3QgTE9PUF9GRU1BTEU9L2ZlbWFsZXx3b21hbnxtdWplcnxoZWxlbmF8ZWx2aXJhfGx1Y2lhfGx1Y8OtYXxwYXVsaW5hfG1vbmljYXxtw7NuaWNhfHNvZmlhfHNvZsOtYXxtYXJpYXxtYXLDrWF8aXJpbmF8c3ZldGxhbmF8dmljdG9yaWEvaTsKY29uc3QgTE9PUF9NQUxFPS9tYWxlfG1hbnxob21icmV8YWx2YXJvfMOhbHZhcm98cGFibG98ZGllZ298am9yZ2V8YW50b25pb3xwYXZlbHx5dXJpfGFsZXhhbmRlcnxtYXhpbXxkbWl0cnl8bmlrb2xhaXxtaWtoYWlsL2k7CmZ1bmN0aW9uIGxvb3BWb2ljZShsYW5nLGdlbmRlcil7bGV0IGNvZGU9bGFuZy5zbGljZSgwLDIpLnRvTG93ZXJDYXNlKCksYT1zcGVlY2hTeW50aGVzaXMuZ2V0Vm9pY2VzKCkuZmlsdGVyKHY9Pih2Lmxhbmd8fCcnKS50b0xvd2VyQ2FzZSgpLnN0YXJ0c1dpdGgoY29kZSkpLHJlPWdlbmRlcj09PSdmZW1hbGUnP0xPT1BfRkVNQUxFOkxPT1BfTUFMRTtyZXR1cm4gYS5maW5kKHY9PnJlLnRlc3Qodi5uYW1lfHwnJykpfHwoYS5sZW5ndGg+MT9hW2dlbmRlcj09PSdmZW1hbGUnPzA6MV06YVswXXx8bnVsbCl9CmZ1bmN0aW9uIGxvb3BVdHRlcmFuY2UodGV4dCxsYW5nLGdlbmRlcixyYXRlKXtsZXQgdT1uZXcgU3BlZWNoU3ludGhlc2lzVXR0ZXJhbmNlKHRleHQpO3UubGFuZz1sYW5nO3UucmF0ZT1yYXRlO2xldCB2PWxvb3BWb2ljZShsYW5nLGdlbmRlcik7aWYodil1LnZvaWNlPXY7cmV0dXJuIHV9CmZ1bmN0aW9uIGxvb3BHYXAoZ2VuZGVyKXtsZXQgdT1sb29wVXR0ZXJhbmNlKCdwYXVzYSBwYXVzYSBwYXVzYScsJ2VzLUVTJyxnZW5kZXIsLjUpO3Uudm9sdW1lPTA7cmV0dXJuIHV9CmZ1bmN0aW9uIGxvb3BSZWZyZXNoQnV0dG9ucygpe2xldCBwPWdldFAoKSxuPUFycmF5LmlzQXJyYXkocC5kaWN0U2VsZWN0ZWQpP3AuZGljdFNlbGVjdGVkLmxlbmd0aDowLGM9ZGljdENhdGVnb3J5fHwnYWxsJyxhbGxXb3Jkcz1kaWN0aW9uYXJ5RW50cmllcygpLGNhdFdvcmRzPWM9PT0nYWxsJz9hbGxXb3JkczphbGxXb3Jkcy5maWx0ZXIoeD0+eC5jYXRlZ29yeT09PWMpLHNiPWRvY3VtZW50LmdldEVsZW1lbnRCeUlkKCdsaXN0ZW4tc2VsZWN0ZWQtYnRuJyksY2I9ZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ2xpc3Rlbi1jYXRlZ29yeS1idG4nKSxkYj1kb2N1bWVudC5nZXRFbGVtZW50QnlJZCgnbG9vcC1jYXJkLWJ0bicpO2lmKHNiKXtzYi5kaXNhYmxlZD0hbiYmIWxvb3BMaXN0ZW5pbmdSdW5uaW5nO3NiLnN0eWxlLm9wYWNpdHk9KG58fGxvb3BMaXN0ZW5pbmdSdW5uaW5nKT8nMSc6Jy40NSc7c2IudGV4dENvbnRlbnQ9bG9vcExpc3RlbmluZ1J1bm5pbmc/J+KWoCDQntGB0YLQsNC90L7QstC40YLRjCc6YOKWtiDQn9GA0L7RgdC70YPRiNCw0YLRjCDQstGL0LHRgNCw0L3QvdC+0LUgKCR7bn0pYH1pZihjYil7Y2IuZGlzYWJsZWQ9ZmFsc2U7Y2IudGV4dENvbnRlbnQ9bG9vcExpc3RlbmluZ1J1bm5pbmc/J+KWoCDQntGB0YLQsNC90L7QstC40YLRjCc6Yz09PSdhbGwnP2Dwn5SBINCf0YDQvtGB0LvRg9GI0LDRgtGMINCy0LXRgdGMINGB0LvQvtCy0LDRgNGMICgke2NhdFdvcmRzLmxlbmd0aH0pYDpg8J+UgSDQn9GA0L7RgdC70YPRiNCw0YLRjCDQutCw0YLQtdCz0L7RgNC40Y4gKCR7Y2F0V29yZHMubGVuZ3RofSlgfWlmKGRiKXtkYi5kaXNhYmxlZD1mYWxzZTtkYi50ZXh0Q29udGVudD1sb29wTGlzdGVuaW5nUnVubmluZz8n4pagINCe0YHRgtCw0L3QvtCy0LjRgtGMJzon4pa2INCf0YDQvtGB0LvRg9GI0LDRgtGMINCy0YvQsdGA0LDQvdC90L7QtSd9fQpmdW5jdGlvbiBzdG9wTG9vcExpc3RlbmluZygpe2xvb3BMaXN0ZW5pbmdSdW5uaW5nPWZhbHNlO2xvb3BMaXN0ZW5pbmdSdW5JZCsrO2xvb3BMaXN0ZW5pbmdEZWNrPVtdO2xvb3BMaXN0ZW5pbmdTb3VyY2U9Jyc7aWYoJ3NwZWVjaFN5bnRoZXNpcydpbiB3aW5kb3cpc3BlZWNoU3ludGhlc2lzLmNhbmNlbCgpO2xvb3BSZWZyZXNoQnV0dG9ucygpfQpmdW5jdGlvbiBsb29wU3luY0NhcmQodyxpbmRleCl7aWYocGFnZSE9PSdkcmlsbCcpcGFnZT0nZHJpbGwnO2RyaWxsRGVjaz1sb29wTGlzdGVuaW5nRGVjay5zbGljZSgpO2RyaWxsUG9zPWluZGV4O2xhc3RBdXRvU3Bva2VuPXcuaWQrJzonK2luZGV4O3JlbmRlcigpO2xvb3BSZWZyZXNoQnV0dG9ucygpfQpmdW5jdGlvbiBsb29wUXVldWUoaWQpe2ZvcihsZXQgdHVybj0wO3R1cm48TE9PUF9MSVNURU5fUFJFUVVFVUUmJmxvb3BMaXN0ZW5pbmdSdW5uaW5nJiZpZD09PWxvb3BMaXN0ZW5pbmdSdW5JZDt0dXJuKyspe2xldCBpbmRleD10dXJuJWxvb3BMaXN0ZW5pbmdEZWNrLmxlbmd0aCx3PWxvb3BMaXN0ZW5pbmdEZWNrW2luZGV4XSxmZW1hbGVGaXJzdD10dXJuJTI9PT0wLGVzR2VuZGVyPWZlbWFsZUZpcnN0PydmZW1hbGUnOidtYWxlJyxydUdlbmRlcj1mZW1hbGVGaXJzdD8nbWFsZSc6J2ZlbWFsZScsZXM9bG9vcFV0dGVyYW5jZSh3LmVzLCdlcy1FUycsZXNHZW5kZXIsLjcwKSxydT1sb29wVXR0ZXJhbmNlKHcucnUsJ3J1LVJVJyxydUdlbmRlciwuNzkpLGdhcD1sb29wR2FwKGVzR2VuZGVyKTtlcy5vbnN0YXJ0PSgpPT57aWYobG9vcExpc3RlbmluZ1J1bm5pbmcmJmlkPT09bG9vcExpc3RlbmluZ1J1bklkKWxvb3BTeW5jQ2FyZCh3LGluZGV4KX07c3BlZWNoU3ludGhlc2lzLnNwZWFrKGVzKTtzcGVlY2hTeW50aGVzaXMuc3BlYWsocnUpO3NwZWVjaFN5bnRoZXNpcy5zcGVhayhnYXApfX0KZnVuY3Rpb24gc3RhcnRMb29wTW9kZShtb2RlKXtpZihsb29wTGlzdGVuaW5nUnVubmluZyl7c3RvcExvb3BMaXN0ZW5pbmcoKTtyZXR1cm59bGV0IGFsbFdvcmRzPWRpY3Rpb25hcnlFbnRyaWVzKCk7aWYobW9kZT09PSdzZWxlY3RlZCcpe2xldCBwPWdldFAoKSxpZHM9QXJyYXkuaXNBcnJheShwLmRpY3RTZWxlY3RlZCk/cC5kaWN0U2VsZWN0ZWQ6W107bG9vcExpc3RlbmluZ0RlY2s9YWxsV29yZHMuZmlsdGVyKHg9Pmlkcy5pbmNsdWRlcyh4LmlkKSk7bG9vcExpc3RlbmluZ1NvdXJjZT0nc2VsZWN0ZWQnfWVsc2UgaWYobW9kZT09PSdjYXRlZ29yeScpe2xldCBjPWRpY3RDYXRlZ29yeXx8J2FsbCc7bG9vcExpc3RlbmluZ0RlY2s9Yz09PSdhbGwnP2FsbFdvcmRzOmFsbFdvcmRzLmZpbHRlcih4PT54LmNhdGVnb3J5PT09Yyk7bG9vcExpc3RlbmluZ1NvdXJjZT0nY2F0ZWdvcnknfWVsc2V7bG9vcExpc3RlbmluZ0RlY2s9QXJyYXkuaXNBcnJheShkcmlsbERlY2spP2RyaWxsRGVjay5zbGljZSgpOltdO2xvb3BMaXN0ZW5pbmdTb3VyY2U9J2NhcmQnfWlmKCFsb29wTGlzdGVuaW5nRGVjay5sZW5ndGgpe2FsZXJ0KG1vZGU9PT0nc2VsZWN0ZWQnPyfQodC90LDRh9Cw0LvQsCDQvtGC0LzQtdGC0YzRgtC1INGB0LvQvtCy0LAg0LPQsNC70LrQsNC80Lgg0LIg0YHQu9C+0LLQsNGA0LUuJzon0JIg0LLRi9Cx0YDQsNC90L3QvtC8INC90LDQsdC+0YDQtSDQvdC10YIg0YHQu9C+0LIuJyk7cmV0dXJufWlmKCEoJ3NwZWVjaFN5bnRoZXNpcydpbiB3aW5kb3cpKXthbGVydCgn0J7Qt9Cy0YPRh9C60LAg0L3QtSDQv9C+0LTQtNC10YDQttC40LLQsNC10YLRgdGPLicpO3JldHVybn1zcGVlY2hTeW50aGVzaXMuY2FuY2VsKCk7bG9vcExpc3RlbmluZ1J1bm5pbmc9dHJ1ZTtsZXQgaWQ9Kytsb29wTGlzdGVuaW5nUnVuSWQ7bG9vcFN5bmNDYXJkKGxvb3BMaXN0ZW5pbmdEZWNrWzBdLDApO3NldFRpbWVvdXQoKCk9Pmxvb3BRdWV1ZShpZCksODApO2xvb3BSZWZyZXNoQnV0dG9ucygpfQp3aW5kb3cuc3RhcnRTZWxlY3RlZExpc3RlbmluZz0oKT0+c3RhcnRMb29wTW9kZSgnc2VsZWN0ZWQnKTsKd2luZG93LnN0YXJ0Q2F0ZWdvcnlMaXN0ZW5pbmc9KCk9PnN0YXJ0TG9vcE1vZGUoJ2NhdGVnb3J5Jyk7CndpbmRvdy5zdGFydExvb3BMaXN0ZW5pbmc9KCk9PnN0YXJ0TG9vcE1vZGUoJ2NhcmQnKTsKd2luZG93LnN0b3BTZWxlY3RlZExvb3BMaXN0ZW5pbmc9c3RvcExvb3BMaXN0ZW5pbmc7Cg==').decode('utf-8')
               if anchor not in s:
-                  raise SystemExit('Anchor for listening logic not found')
+                  raise SystemExit('Anchor not found')
               s = s.replace(anchor, code + '\n' + anchor, 1)
-
-          required = ['id="listen-selected-btn"','id="listen-category-btn"','id="loop-card-btn"',marker,'window.startSelectedListening','window.startCategoryListening','window.startLoopListening']
-          missing = [x for x in required if x not in s]
-          if missing:
-              raise SystemExit('Missing listening code: ' + ', '.join(missing))
           p.write_text(s, encoding='utf-8')
           PY
       - name: Commit direct listening code
