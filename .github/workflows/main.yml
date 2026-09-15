@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Add listening buttons directly to index
+      - name: Add listening controls and logic directly to index
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -34,19 +34,45 @@ jobs:
 
           s = s.replace('const BASE_WORDS=buildExtendedDictionary(CORE_WORDS);','const BASE_WORDS=CORE_WORDS.map(x=>({...x}));')
 
-          required = ['id="listen-selected-btn"','id="listen-category-btn"','id="loop-card-btn"']
+          marker = '/* DIRECT_LISTENING_V1 */'
+          if marker not in s:
+              anchor = "window.startSelectedDrill=()=>{"
+              code = r'''
+/* DIRECT_LISTENING_V1 */
+let loopListeningRunning=false,loopListeningRunId=0,loopListeningDeck=[],loopListeningSource='';
+const LOOP_LISTEN_PREQUEUE=1200;
+const LOOP_FEMALE=/female|woman|mujer|helena|elvira|lucia|lucía|paulina|monica|mónica|sofia|sofía|maria|maría|irina|svetlana|victoria/i;
+const LOOP_MALE=/male|man|hombre|alvaro|álvaro|pablo|diego|jorge|antonio|pavel|yuri|alexander|maxim|dmitry|nikolai|mikhail/i;
+function loopVoice(lang,gender){let code=lang.slice(0,2).toLowerCase(),a=speechSynthesis.getVoices().filter(v=>(v.lang||'').toLowerCase().startsWith(code)),re=gender==='female'?LOOP_FEMALE:LOOP_MALE;return a.find(v=>re.test(v.name||''))||(a.length>1?a[gender==='female'?0:1]:a[0]||null)}
+function loopUtterance(text,lang,gender,rate){let u=new SpeechSynthesisUtterance(text);u.lang=lang;u.rate=rate;let v=loopVoice(lang,gender);if(v)u.voice=v;return u}
+function loopGap(gender){let u=loopUtterance('pausa pausa pausa','es-ES',gender,.5);u.volume=0;return u}
+function loopRefreshButtons(){let p=getP(),n=Array.isArray(p.dictSelected)?p.dictSelected.length:0,c=dictCategory||'all',allWords=dictionaryEntries(),catWords=c==='all'?allWords:allWords.filter(x=>x.category===c),sb=document.getElementById('listen-selected-btn'),cb=document.getElementById('listen-category-btn'),db=document.getElementById('loop-card-btn');if(sb){sb.disabled=!n&&!loopListeningRunning;sb.style.opacity=(n||loopListeningRunning)?'1':'.45';sb.textContent=loopListeningRunning?'■ Остановить':`▶ Прослушать выбранное (${n})`}if(cb){cb.disabled=false;cb.textContent=loopListeningRunning?'■ Остановить':c==='all'?`🔁 Прослушать весь словарь (${catWords.length})`:`🔁 Прослушать категорию (${catWords.length})`}if(db){db.disabled=false;db.textContent=loopListeningRunning?'■ Остановить':'▶ Прослушать выбранное'}}
+function stopLoopListening(){loopListeningRunning=false;loopListeningRunId++;loopListeningDeck=[];loopListeningSource='';if('speechSynthesis'in window)speechSynthesis.cancel();loopRefreshButtons()}
+function loopSyncCard(w,index){if(page!=='drill')page='drill';drillDeck=loopListeningDeck.slice();drillPos=index;lastAutoSpoken=w.id+':'+index;render();loopRefreshButtons()}
+function loopQueue(id){for(let turn=0;turn<LOOP_LISTEN_PREQUEUE&&loopListeningRunning&&id===loopListeningRunId;turn++){let index=turn%loopListeningDeck.length,w=loopListeningDeck[index],femaleFirst=turn%2===0,esGender=femaleFirst?'female':'male',ruGender=femaleFirst?'male':'female',es=loopUtterance(w.es,'es-ES',esGender,.70),ru=loopUtterance(w.ru,'ru-RU',ruGender,.79),gap=loopGap(esGender);es.onstart=()=>{if(loopListeningRunning&&id===loopListeningRunId)loopSyncCard(w,index)};speechSynthesis.speak(es);speechSynthesis.speak(ru);speechSynthesis.speak(gap)}}
+function startLoopMode(mode){if(loopListeningRunning){stopLoopListening();return}let allWords=dictionaryEntries();if(mode==='selected'){let p=getP(),ids=Array.isArray(p.dictSelected)?p.dictSelected:[];loopListeningDeck=allWords.filter(x=>ids.includes(x.id));loopListeningSource='selected'}else if(mode==='category'){let c=dictCategory||'all';loopListeningDeck=c==='all'?allWords:allWords.filter(x=>x.category===c);loopListeningSource='category'}else{loopListeningDeck=Array.isArray(drillDeck)?drillDeck.slice():[];loopListeningSource='card'}if(!loopListeningDeck.length){alert(mode==='selected'?'Сначала отметьте слова галками в словаре.':'В выбранном наборе нет слов.');return}if(!('speechSynthesis'in window)){alert('Озвучка не поддерживается.');return}speechSynthesis.cancel();loopListeningRunning=true;let id=++loopListeningRunId;loopSyncCard(loopListeningDeck[0],0);setTimeout(()=>loopQueue(id),80);loopRefreshButtons()}
+window.startSelectedListening=()=>startLoopMode('selected');
+window.startCategoryListening=()=>startLoopMode('category');
+window.startLoopListening=()=>startLoopMode('card');
+window.stopSelectedLoopListening=stopLoopListening;
+'''
+              if anchor not in s:
+                  raise SystemExit('Anchor for listening logic not found')
+              s = s.replace(anchor, code + '\n' + anchor, 1)
+
+          required = ['id="listen-selected-btn"','id="listen-category-btn"','id="loop-card-btn"',marker,'window.startSelectedListening','window.startCategoryListening','window.startLoopListening']
           missing = [x for x in required if x not in s]
           if missing:
-              raise SystemExit('Missing controls: ' + ', '.join(missing))
+              raise SystemExit('Missing listening code: ' + ', '.join(missing))
           p.write_text(s, encoding='utf-8')
           PY
-      - name: Commit direct buttons
+      - name: Commit direct listening code
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add spanish-zero-github-netlify/web/index.html
-          git commit -m "fix: direct listening buttons [web-controls]"
+          git commit -m "fix: wire listening buttons directly [web-controls]"
           git push origin HEAD:main
 
   build:
