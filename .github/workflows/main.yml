@@ -1,4 +1,4 @@
-name: Patch web listening
+name: Patch web background listening
 
 on:
   push:
@@ -15,23 +15,36 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Keep stable listening and bump PWA cache
+
+      - name: Wire background controller and refresh PWA
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import re
-          swp=Path('spanish-zero-github-netlify/web/sw.js')
-          sw=swp.read_text(encoding='utf-8')
-          sw=re.sub(r"const CACHE='[^']+';", "const CACHE='spanish-zero-web-v20-stable-listening';", sw, count=1)
-          sw=re.sub(r"get\('app_update'\)!=='[0-9]+'", "get('app_update')!=='20'", sw)
-          sw=re.sub(r"set\('app_update','[0-9]+'\)", "set('app_update','20')", sw)
-          swp.write_text(sw,encoding='utf-8')
+
+          p = Path('spanish-zero-github-netlify/web/index.html')
+          s = p.read_text(encoding='utf-8')
+          tag = '<script src="background-listening.js?v=1"></script>'
+          if tag not in s:
+              s = s.replace('</body>', tag + '</body>', 1)
+          p.write_text(s, encoding='utf-8')
+
+          swp = Path('spanish-zero-github-netlify/web/sw.js')
+          sw = swp.read_text(encoding='utf-8')
+          sw = re.sub(r"const CACHE='[^']+';", "const CACHE='spanish-zero-web-v21-background-media';", sw, count=1)
+          sw = re.sub(r"get\('app_update'\)!=='[0-9]+'", "get('app_update')!=='21'", sw)
+          sw = re.sub(r"set\('app_update','[0-9]+'\)", "set('app_update','21')", sw)
+          swp.write_text(sw, encoding='utf-8')
           PY
-      - name: Commit PWA refresh
+
+      - name: Check JavaScript syntax
+        run: node --check spanish-zero-github-netlify/web/background-listening.js
+
+      - name: Commit background playback
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add spanish-zero-github-netlify/web/sw.js
-          git commit -m "chore: refresh PWA for stable listening"
+          git add spanish-zero-github-netlify/web/index.html spanish-zero-github-netlify/web/sw.js
+          git commit -m "feat: enable background loop playback"
           git push origin HEAD:main
