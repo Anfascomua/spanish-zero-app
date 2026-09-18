@@ -40,8 +40,10 @@ jobs:
 
       - name: Install Android platform
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          test -n "$SDKMANAGER" || { echo 'Android sdkmanager was not found'; exit 1; }
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" 'platforms;android-35' 'build-tools;35.0.0'
 
       - name: Restore signing key
         env:
